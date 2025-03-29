@@ -5,6 +5,7 @@ An LLM-powered Manim video generator.
 ## Setup
 
 ```bash
+$ uv venv
 $ .venv\Scripts\activate
 $ uv pip install -r pyproject.toml
 ```
