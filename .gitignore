@@ -40,3 +40,4 @@ build/
 *.egg-info/
 ''', EmptyFile=False))
 /__pycache__
+/generated_videos
