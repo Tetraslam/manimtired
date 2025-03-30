@@ -79,34 +79,83 @@ parser_obj = JsonOutputParser(pydantic_object=ManimCode)
 
 # Set up prompt template for code generation chain with complex animation limits removed
 code_prompt = ChatPromptTemplate.from_messages([
-    ("system", """You are a Manim code generator specialized in creating educational content. Your task is to generate Manim code that effectively communicates complex concepts through animations. You MUST output ONLY valid JSON matching this schema:
+    ("system", """You are a Manim code generator. You MUST output ONLY valid JSON matching this schema:
 {format_instructions}
 
-Your code MUST follow these educational content guidelines:
+Your code MUST follow these instructions:
+1. Define a single Manim scene class named `GeneratedScene`.
+2. Create a well-structured presentation with MULTIPLE SLIDES (at least 4-6 distinct sections).
+3. For each slide/section:
+   - Use a clear title at the top of the slide
+   - Include detailed explanatory text
+   - Add relevant visual elements (diagrams, shapes, animations)
+   - Implement smooth transitions between slides (fade, transform, etc.)
+   - Use the `wait()` method to give viewers time to absorb information
 
-1. EDUCATIONAL CONTENT:
-   - Include the ACTUAL educational content provided in the prompt
-   - Break down complex explanations into digestible parts
-   - Present information in a logical sequence
-   - Use visual elements that directly support the textual explanations
+4. Layout Requirements:
+   - IMPORTANT: Ensure ALL elements stay within the visible screen boundaries
+   - Place all titles, explanatory text, and labels in the LEFT THIRD of the screen using appropriate values with `.to_edge(LEFT)` or `.shift(LEFT * X)`
+   - Place all diagrams, shapes, graphs, and animations in the RIGHT TWO-THIRDS of the screen
+   - Ensure proper vertical spacing - avoid objects being cut off at the top or bottom of the screen
+   - Center objects relative to their designated screen area (left side for text, right side for visuals)
+   - Use `.scale(0.X)` to reduce size of complex elements that might overflow the screen
+   - For text elements, use `.scale(0.8)` or smaller to ensure readability without overflow
+   - Leave adequate margins (at least 0.5 units) from all screen edges
 
-2. CODE STRUCTURE:
-   - Define a Manim scene class named `GeneratedScene` that inherits from `Scene`
-   - Format the animation as a slideshow with distinct sections
-   - Include proper imports (from manim import * \n from manim import FadeIn, AnimationGroup, UpdateFromAlphaFunc) and do not use the from manim import * on the same line as the subsequent manim imports
-   - Use proper Python syntax and indentation
+5. Content Structure:
+   - Begin with an introduction slide
+   - Develop the topic through multiple content slides with increasing complexity
+   - Include examples that build upon each other
+   - Conclude with a summary or key takeaways slide
 
-3. VISUAL LAYOUT:
-   - Place explanatory text on the LEFT side of the screen
-   - Place diagrams/visuals on the RIGHT side
-   - Maintain appropriate spacing between elements
-   - Use appropriate font sizes (titles larger than explanations)
+6. Visual Elements:
+   - Use a variety of visual elements (shapes, graphs, equations, etc.)
+   - Implement color coding to highlight important concepts
+   - Use animations to demonstrate changes or transformations
+   - Include at least one complex mathematical concept with proper notation
 
-4. ANIMATION TECHNIQUES:
-   - Animate text appearance using Write() or AddTextLetterByLetter()
-   - Animate diagrams using Create() or other suitable animations
-   - Include self.wait() calls for pacing (e.g., after each slide)
-"""),
+7. Technical Requirements:
+   - Only use valid Manim classes and functions
+   - Use standard LaTeX notation in MathTex (e.g., MathTex(r"\\frac{{1}}{{2}}"))
+   - Do not create custom classes, functions, or imports
+   - For degree symbols, use LaTeX notation (\\degree) in MathTex or the Unicode degree symbol (°) in Text
+   - Ensure all wait times are appropriate (not too short)
+   - Add comments to explain complex sections of code
+   - When creating VGroups or other compound objects, always define them BEFORE referencing them in animations
+   
+8. Common Manim Method Usage:
+   - self.clear() takes NO parameters - use as self.clear()
+   - self.play() requires at least one animation argument
+   - self.wait() takes an optional time parameter - use as self.wait() or self.wait(seconds)
+   - When using Arrow(), always specify both start and end points
+   - MathTex always requires a string argument with LaTeX content
+   - Text class requires a string argument for the text content
+
+9. Valid Manim Shape Classes:
+   - Circle, Square, Rectangle, Triangle, Polygon, Line, Arrow, DoubleArrow, Arc
+   - Dot (Not SmallDot, TinyDot, etc. - use Dot().scale(0.X) instead)
+   - Star, RegularPolygon, ArcBetweenPoints
+   - VGroup (for grouping objects together)
+   - Use set_fill(), set_stroke() for styling
+   - For text, use only Text, Tex, MathTex
+   - For 3D, use only Sphere, Cube, Prism, Cylinder, Cone
+
+10. Valid Manim Colors:
+   - ONLY use these predefined colors: WHITE, BLACK, RED, GREEN, BLUE, YELLOW, PURPLE, ORANGE
+   - GOLD, PINK, GRAY, TEAL, MAROON, LIGHT_BROWN, DARK_BROWN, DARK_BLUE
+   - For other colors, use rgb_to_color or hex_to_color with explicit RGB values
+   - Example: `color=rgb_to_color([0.9, 0.7, 0.5])` for a beige-like color
+   - Never use colors like BEIGE, LIME, CYAN, etc. as they are not predefined
+
+11. Text Creation - IMPORTANT:
+   - For Text objects, do NOT use 'alignment' parameter - it's not supported
+   - Use ONLY these parameters with Text(): text_string, font, font_size, color, t2c, t2f, t2s, t2w
+   - For text alignment, use positioning methods AFTER creation:
+     * .to_edge(direction) - aligns to screen edge
+     * .align_to(object, direction) - aligns to another object
+     * .next_to(object, direction) - positions relative to another object
+   - Do NOT use any parameters not explicitly listed above
+    """),
     ("human", "{prompt}")
 ])
 
@@ -174,7 +223,7 @@ class SimpleGrid(VGroup):
     # Introduce safe_create for Circle/Arrow if Create is used on them
     if ("Create(Circle" in fixed_code or "Create(Arrow" in fixed_code) and "def safe_create" not in fixed_code:
         safe_create_func = """
-# Safe creation for large shapes (prevents hang-ups)
+# Safe creation function for problematic shapes
 def safe_create(mobject):
     original_opacity = mobject.get_opacity()
     mobject.set_opacity(0)
@@ -361,35 +410,27 @@ def create_safe_fallback_script(prompt: str, plan: dict) -> str:
     # For each slide, create extremely basic content
     for i in range(1, 5):
         idx = str(i)
-        slide_title = plan["explanation_slides"].get(idx, {}).get("title", f"Slide {i}")
-        slide_expl = plan["explanation_slides"].get(idx, {}).get("explanation", f"About {prompt}")
-        # Break explanation into manageable lines (for text blocks)
-        words = slide_expl.split()
-        lines = []
-        current_line = []
-        for word in words:
-            current_line.append(word)
-            if len(" ".join(current_line)) > 60:
-                lines.append(" ".join(current_line))
-                current_line = []
-        if current_line:
-            lines.append(" ".join(current_line))
+        slide_title = plan["explanation_slides"].get(idx, {}).get("title", f"{prompt} (Slide {i})")
+        
+        # Get explanation or use LLM to generate one if missing
+        expl_text = plan["explanation_slides"].get(idx, {}).get("explanation", f"This slide covers important aspects of {prompt}.")
+        
+        # Get diagram description or use LLM to generate one if missing
+        diag_text = plan["drawing_slides"].get(idx, {}).get("diagram", f"A visual representation of {prompt}.")
+        
+        plan["explanation_slides"][idx] = {"title": slide_title, "explanation": expl_text}
+        plan["drawing_slides"][idx] = {"diagram": diag_text}
+        
         # Add explanation slide text
         script += f"\n        # Explanation Slide {i}: {slide_title}\n"
         script += f"        title_{i} = Text(\"{slide_title}\", font_size=40).to_edge(UP)\n"
-        for j, text_line in enumerate(lines):
-            line_tag = f"text_{i}_{j}"
-            if j == 0:
-                script += f"        {line_tag} = Text(\"{text_line}\", font_size=30).next_to(title_{i}, DOWN, buff=0.5)\n"
-            else:
-                script += f"        {line_tag} = Text(\"{text_line}\", font_size=30).next_to(text_{i}_{j-1}, DOWN, buff=0.3)\n"
+        script += f"        text_{i} = Text(\"{expl_text}\", font_size=30).next_to(title_{i}, DOWN, buff=0.5)\n"
         script += f"        self.play(Write(title_{i}))\n        self.wait(0.5)\n"
-        for j in range(len(lines)):
-            script += f"        self.play(Write(text_{i}_{j}))\n        self.wait(0.5)\n"
+        script += f"        self.play(Write(text_{i}))\n        self.wait(0.5)\n"
         script += "        self.wait(1)\n        self.clear()\n"
         # Add diagram slide with a single shape labeled by title
         script += f"\n        # Drawing Slide {i}: Visualization for {slide_title}\n"
-        desc = plan["drawing_slides"].get(idx, {}).get("diagram", "")
+        desc = diag_text
         shape_tag = f"shape_{i}"
         label_tag = f"label_{i}"
         # Decide shape type by keywords in diagram description
@@ -924,7 +965,7 @@ Output as a structured, well-formatted response with clear slide-by-slide organi
                     title = title_match.group(1).strip() if title_match else f"Slide {i}: {prompt}"
                     
                     explanation_match = re.search(r'(?i)explanation[:\s]*([^\n].*?)(?=\n\s*(?:diagram|visual|$))', content, re.DOTALL)
-                    explanation = explanation_match.group(1).strip() if explanation_match else f"This slide discusses {prompt}."
+                    explanation = explanation_match.group(1).strip() if explanation_match else f"This slide covers important aspects of {prompt}."
                     
                     diagram_match = re.search(r'(?i)(?:diagram|visual)[:\s]*([^\n].*)', content, re.DOTALL)
                     diagram = diagram_match.group(1).strip() if diagram_match else f"A visual representation of {prompt}."
